@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react"
 import { History, Loader2, Send, Sparkles, Square, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Textarea } from "@/components/ui/textarea"
 import { AppShell, PageHeader, type Navigate } from "@/components/AppShell"
@@ -18,6 +19,49 @@ interface SseEvent {
   done?: boolean
   code?: number
 }
+
+const EXAMPLE_PROMPTS = [
+  {
+    label: "Token waste",
+    prompt:
+      "Where are tokens being wasted the most across my sessions? Prioritize concrete fixes by estimated token savings, and tell me exactly what to change in my setup.",
+  },
+  {
+    label: "Cache health",
+    prompt:
+      "Is my cache hit rate healthy? Where is cache being missed, which sessions/agents have the worst reuse, and how can I improve cache reuse to cut costs?",
+  },
+  {
+    label: "Scaffold & MCP bloat",
+    prompt:
+      "How much of my context is scaffold (system prompt + tool schemas + MCP definitions)? Which MCP servers or tools should I prune or scope per-agent to shrink it?",
+  },
+  {
+    label: "Model value",
+    prompt:
+      "Which model gives the best value per dollar across my sessions? Where should I switch models (e.g. free big-pickle vs paid deepseek) without losing quality?",
+  },
+  {
+    label: "Agent strategy",
+    prompt:
+      "Which agents are most token-efficient? What should I delegate to subagents and what should I keep on the main agent? Back it with per-agent numbers.",
+  },
+  {
+    label: "Cut the bill 30%",
+    prompt:
+      "Give me a concrete, prioritized plan to cut my opencode spend by at least 30% while keeping quality — with expected savings for each step.",
+  },
+  {
+    label: "Expensive sessions",
+    prompt:
+      "Deep-dive my most expensive sessions. What went wrong in each one, and how do I avoid repeating those patterns?",
+  },
+  {
+    label: "Dead & stalled sessions",
+    prompt:
+      "Find sessions that started but produced nothing or failed. What do they have in common, and how can I prevent them going forward?",
+  },
+]
 
 // draft persistence for the textarea focus only — full history lives in the DB
 const DRAFT_KEY = "osp.analyze.focus.v1"
@@ -45,6 +89,7 @@ export function AnalyzePage({
   const [running, setRunning] = useState(false)
   const [text, setText] = useState("")
   const [error, setError] = useState<string | null>(null)
+  const [example, setExample] = useState<string | undefined>(undefined)
   const aborterRef = useRef<AbortController | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const mountedRef = useRef(false)
@@ -221,10 +266,41 @@ export function AnalyzePage({
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
+              <div>
+                <Select
+                  value={example}
+                  onValueChange={(label) => {
+                    const found = EXAMPLE_PROMPTS.find((e) => e.label === label)
+                    if (found) setFocus(found.prompt)
+                    setExample(label)
+                  }}
+                >
+                  <SelectTrigger className="w-full text-muted-foreground">
+                    <span className={cn(!example && "text-muted-foreground/80")}>
+                      {example ?? "Pick an example analysis…"}
+                    </span>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {EXAMPLE_PROMPTS.map((e) => (
+                      <SelectItem key={e.label} value={e.label}>
+                        {e.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="mt-1.5 text-[11px] text-muted-foreground">
+                  Selecting one fills the prompt below — tweak it and run, or clear and write your own.
+                </p>
+              </div>
               <Textarea
                 placeholder="Optional: focus the analysis — e.g. 'is my cache hit rate healthy?', 'should I use big-pickle for this?'"
                 value={focus}
-                onChange={(e) => setFocus(e.target.value)}
+                onChange={(e) => {
+                  setFocus(e.target.value)
+                  if (e.target.value !== EXAMPLE_PROMPTS.find((x) => x.label === example)?.prompt) {
+                    setExample(undefined)
+                  }
+                }}
                 rows={3}
               />
               <div className="flex items-center gap-2">
