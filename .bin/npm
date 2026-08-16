@@ -1,4 +1,8 @@
 #!/bin/zsh
-# npx injects npm_config_allow_scripts from ~/.npmrc; npm 12 rejects it as a CLI policy in project installs
+# Workaround for npm 12: shadcn's internal `npm install` fails in project
+# scope when the user's ~/.npmrc has an `allow-scripts` entry (npx injects it
+# as npm_config_allow_scripts, which npm 12 treats as a forbidden CLI policy).
+# This shim unsets that var and runs the real npm. Resolve npm next to node so
+# this works on any machine (no hardcoded paths).
 unset npm_config_allow_scripts 2>/dev/null
 exec "$(dirname "$(command -v node)")/npm" "${@}"
