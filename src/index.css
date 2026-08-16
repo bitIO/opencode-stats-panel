@@ -147,3 +147,76 @@
     background: transparent;
   }
 }
+
+@layer components {
+  .markdown {
+    @apply text-foreground/90;
+  }
+  .markdown > :first-child {
+    @apply mt-0;
+  }
+  .markdown h1,
+  .markdown h2,
+  .markdown h3,
+  .markdown h4 {
+    @apply mt-5 mb-1.5 font-semibold tracking-tight;
+  }
+  .markdown h1 {
+    @apply text-lg;
+  }
+  .markdown h2 {
+    @apply text-base;
+  }
+  .markdown h3,
+  .markdown h4 {
+    @apply text-sm;
+  }
+  .markdown p {
+    @apply my-2 leading-relaxed;
+  }
+  .markdown ul,
+  .markdown ol {
+    @apply my-2 space-y-1 pl-5;
+  }
+  .markdown ul {
+    @apply list-disc;
+  }
+  .markdown ol {
+    @apply list-decimal;
+  }
+  .markdown li > ul,
+  .markdown li > ol {
+    @apply my-1;
+  }
+  .markdown pre {
+    @apply my-2 overflow-x-auto rounded-md border border-border bg-secondary/40 p-3 font-mono text-xs leading-relaxed;
+  }
+  .markdown pre code {
+    @apply bg-transparent p-0 text-[0.95em];
+  }
+  .markdown :not(pre) > code {
+    @apply rounded bg-secondary px-1.5 py-0.5 font-mono text-[0.85em];
+  }
+  .markdown a {
+    @apply text-primary underline decoration-primary/40 underline-offset-2 hover:decoration-primary;
+  }
+  .markdown blockquote {
+    @apply my-2 border-l-2 border-primary/40 pl-3 text-muted-foreground;
+  }
+  .markdown hr {
+    @apply my-3 border-border;
+  }
+  .markdown table {
+    @apply my-2 w-full border-collapse text-xs;
+  }
+  .markdown th,
+  .markdown td {
+    @apply border-b border-border px-2 py-1 text-left;
+  }
+  .markdown th {
+    @apply font-semibold text-muted-foreground;
+  }
+  .markdown strong {
+    @apply font-semibold;
+  }
+}

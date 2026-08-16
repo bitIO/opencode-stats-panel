@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import { Loader2, Send, Sparkles, Square } from "lucide-react"
+import { Loader2, Send, Sparkles, Square, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Textarea } from "@/components/ui/textarea"
@@ -15,6 +15,34 @@ interface SseEvent {
   code?: number
 }
 
+const STORAGE_KEY = "osp.analyze.v1"
+
+interface StoredAnalysis {
+  focus: string
+  output: string
+  updatedAt: number
+}
+
+function loadStored(): StoredAnalysis | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as StoredAnalysis
+    if (typeof parsed.focus !== "string" || typeof parsed.output !== "string") return null
+    return parsed
+  } catch {
+    return null
+  }
+}
+
+function saveStored(value: StoredAnalysis) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(value))
+  } catch {
+    /* storage full / unavailable — ignore */
+  }
+}
+
 export function AnalyzePage({
   onNavigate,
 }: {
@@ -26,10 +54,36 @@ export function AnalyzePage({
   const [error, setError] = useState<string | null>(null)
   const aborterRef = useRef<AbortController | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const mountedRef = useRef(false)
+
+  useEffect(() => {
+    const stored = loadStored()
+    if (stored) {
+      setFocus(stored.focus)
+      setText(stored.output)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!mountedRef.current) {
+      mountedRef.current = true
+      return
+    }
+    const t = setTimeout(() => saveStored({ focus, output: text, updatedAt: Date.now() }), 400)
+    return () => clearTimeout(t)
+  }, [focus, text])
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" })
   }, [text])
+
+  useEffect(() => () => aborterRef.current?.abort(), [])
+
+  const clear = () => {
+    setText("")
+    setError(null)
+    saveStored({ focus, output: "", updatedAt: Date.now() })
+  }
 
   const run = async () => {
     const abort = new AbortController()
@@ -115,6 +169,11 @@ export function AnalyzePage({
                 className="gap-2 text-muted-foreground"
               >
                 <Square className="size-3.5" /> stop
+              </Button>
+            )}
+            {!running && text && (
+              <Button variant="ghost" size="sm" onClick={clear} className="gap-2 text-muted-foreground">
+                <Trash2 className="size-3.5" /> clear
               </Button>
             )}
           </div>
