@@ -158,6 +158,22 @@ export interface SessionDetail {
   messages: SessionMessage[]
 }
 
+export interface AnalysisSummary {
+  id: number
+  focus: string
+  created_at: number
+  output_len: number
+}
+
+export interface Analysis {
+  id: number
+  focus: string
+  output: string
+  model: string
+  source: string
+  created_at: number
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, init)
   if (!res.ok) {
@@ -187,4 +203,8 @@ export const api = {
     return request<SessionsResponse>(`/api/sessions?${q}`)
   },
   sessionDetail: (id: string) => request<SessionDetail>(`/api/sessions/${id}`),
+  analysisList: () => request<AnalysisSummary[]>("/api/analysis"),
+  analysisDetail: (id: number) => request<Analysis>(`/api/analysis/${id}`),
+  analysisDelete: (id: number) =>
+    request<{ ok: boolean }>(`/api/analysis/${id}`, { method: "DELETE" }),
 }

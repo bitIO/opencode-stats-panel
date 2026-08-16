@@ -2,8 +2,10 @@ import { spawn } from "node:child_process"
 import { mkdtemp, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
+import type Database from "better-sqlite3"
 import type { Response } from "express"
 import { config } from "./config.js"
+import { insertAnalysis } from "./db.js"
 import type { getAnalyzeContext } from "./queries.js"
 
 type Context = ReturnType<typeof getAnalyzeContext>
@@ -34,7 +36,8 @@ async function writeSnapshot(context: Context): Promise<string> {
 export async function streamAnalyze(
   res: Response,
   context: Context,
-  focus?: string,
+  focus: string | undefined,
+  analysisDb: Database.Database,
 ): Promise<void> {
   const file = await writeSnapshot(context)
   const { message } = buildPrompt(context, focus)
@@ -53,11 +56,31 @@ export async function streamAnalyze(
   })
 
   let buffer = ""
+  let fullText = ""
+  let saved = false
+  const saveRun = () => {
+    if (saved) return
+    saved = true
+    try {
+      insertAnalysis(analysisDb, {
+        focus: focus ?? "",
+        output: fullText,
+        model: config.analyzeModel,
+        source: "opencode",
+        created_at: Date.now(),
+      })
+    } catch (err) {
+      // never let a DB failure break the SSE stream
+      console.error("failed to persist analysis:", err)
+    }
+  }
+
   child.stdout.on("data", (chunk: Buffer) => {
     buffer += chunk.toString().replace(WARP, "")
     // strip ANSI and emit as SSE chunks
     const cleaned = buffer.replace(ANSI, "")
     if (cleaned.length > 0) {
+      fullText += cleaned
       res.write(`data: ${JSON.stringify({ text: cleaned })}\n\n`)
       buffer = ""
     }
@@ -70,12 +93,14 @@ export async function streamAnalyze(
 
   child.on("error", (err) => {
     clearTimeout(timer)
+    saveRun()
     res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`)
     res.end()
   })
 
   child.on("close", (code) => {
     clearTimeout(timer)
+    saveRun()
     res.write(`data: ${JSON.stringify({ done: true, code })}\n\n`)
     res.end()
   })

@@ -1,5 +1,5 @@
 import express from "express"
-import { openDb } from "./db.js"
+import { openDb, openAnalysisDb, listAnalyses, getAnalysis, deleteAnalysis } from "./db.js"
 import { config } from "./config.js"
 import { streamAnalyze } from "./analyze.js"
 import {
@@ -18,6 +18,7 @@ const app = express()
 app.use(express.json())
 
 let db = openDb()
+const analysisDb = openAnalysisDb()
 
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true, dbPath: config.dbPath })
@@ -67,10 +68,41 @@ app.get("/api/sessions/:id", (req, res) => {
   res.json(detail)
 })
 
+app.get("/api/analysis", (_req, res) => {
+  res.json(listAnalyses(analysisDb))
+})
+
+app.get("/api/analysis/:id", (req, res) => {
+  const id = Number(req.params.id)
+  if (!Number.isInteger(id)) {
+    res.status(400).json({ error: "invalid id" })
+    return
+  }
+  const row = getAnalysis(analysisDb, id)
+  if (!row) {
+    res.status(404).json({ error: "analysis not found" })
+    return
+  }
+  res.json(row)
+})
+
+app.delete("/api/analysis/:id", (req, res) => {
+  const id = Number(req.params.id)
+  if (!Number.isInteger(id)) {
+    res.status(400).json({ error: "invalid id" })
+    return
+  }
+  if (!deleteAnalysis(analysisDb, id)) {
+    res.status(404).json({ error: "analysis not found" })
+    return
+  }
+  res.json({ ok: true })
+})
+
 app.post("/api/analyze", async (req, res) => {
   const context = getAnalyzeContext(db)
   const focus = typeof req.body?.focus === "string" ? req.body.focus : undefined
-  await streamAnalyze(res, context, focus)
+  await streamAnalyze(res, context, focus, analysisDb)
 })
 
 app.listen(config.port, () => {
