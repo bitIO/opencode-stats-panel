@@ -1,0 +1,4 @@
+#!/bin/zsh
+# npx injects npm_config_allow_scripts from ~/.npmrc; npm 12 rejects it as a CLI policy in project installs
+unset npm_config_allow_scripts 2>/dev/null
+exec "$(dirname "$(command -v node)")/npm" "${@}"
