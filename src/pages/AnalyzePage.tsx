@@ -280,7 +280,7 @@ export function AnalyzePage({
                       {example ?? "Pick an example analysis…"}
                     </span>
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent position="popper" className="min-w-[var(--radix-select-trigger-width)]">
                     {EXAMPLE_PROMPTS.map((e) => (
                       <SelectItem key={e.label} value={e.label}>
                         {e.label}
