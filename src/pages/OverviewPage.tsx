@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, type ReactNode } from "react"
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts"
 import { ChevronRight, DollarSign, Gauge, Layers, Timer } from "lucide-react"
 import {
@@ -21,9 +21,8 @@ import { AppShell, PageHeader, type Navigate } from "@/components/AppShell"
 import { KpiCard } from "@/components/KpiCard"
 import { BreakdownBars } from "@/components/BreakdownBars"
 import { useApi } from "@/hooks/use-api"
-import { api } from "@/lib/api"
-import { fmtCompact, fmtCost, fmtPct, fmtRelative } from "@/lib/format"
-import { ModelBadge } from "@/components/SessionDrawer"
+import { api, type SessionSummary } from "@/lib/api"
+import { fmtCompact, fmtCost, fmtDuration, fmtPct, fmtRelative } from "@/lib/format"
 
 const chartConfig = {
   input: { label: "input", color: "var(--chart-1)" },
@@ -43,7 +42,10 @@ export function OverviewPage({
   const byModel = useApi(() => api.breakdown("model"), [])
   const byAgent = useApi(() => api.breakdown("agent"), [])
   const byProject = useApi(() => api.breakdown("project"), [])
-  const recent = useApi(() => api.sessions({ limit: 6, sort: "time" }), [])
+  const topCost = useApi(() => api.sessions({ limit: 3, sort: "cost" }), [])
+  const topTokens = useApi(() => api.sessions({ limit: 3, sort: "tokens" }), [])
+  const topTime = useApi(() => api.sessions({ limit: 3, sort: "duration" }), [])
+  const recent = useApi(() => api.sessions({ limit: 3, sort: "time" }), [])
 
   const o = overview.data
 
@@ -146,7 +148,7 @@ export function OverviewPage({
             <CardTitle className="text-sm">Cost by model</CardTitle>
             <CardDescription>Where the money went</CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="h-64 overflow-y-auto">
             {byModel.data ? <BreakdownBars rows={byModel.data} valueKey="cost" showCache showSessions /> : <Skeleton className="h-32 w-full" />}
           </CardContent>
         </Card>
@@ -155,7 +157,7 @@ export function OverviewPage({
             <CardTitle className="text-sm">Cost by agent</CardTitle>
             <CardDescription>Agents that burn the most</CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="h-64 overflow-y-auto">
             {byAgent.data ? <BreakdownBars rows={byAgent.data} valueKey="cost" showSessions /> : <Skeleton className="h-32 w-full" />}
           </CardContent>
         </Card>
@@ -164,7 +166,7 @@ export function OverviewPage({
             <CardTitle className="text-sm">Tokens by project</CardTitle>
             <CardDescription>Input tokens per repo</CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="h-64 overflow-y-auto">
             {byProject.data ? <BreakdownBars rows={byProject.data} valueKey="tokensInput" /> : <Skeleton className="h-32 w-full" />}
           </CardContent>
         </Card>
@@ -173,47 +175,111 @@ export function OverviewPage({
       <Card className="mt-6">
         <CardHeader className="flex-row items-center justify-between space-y-0">
           <div>
-            <CardTitle className="text-sm">Recent sessions</CardTitle>
-            <CardDescription>Latest runs, click to inspect</CardDescription>
+            <button
+              type="button"
+              onClick={() => onNavigate("sessions")}
+              className="group flex items-center gap-1.5"
+            >
+              <CardTitle className="text-sm transition-colors group-hover:text-foreground">
+                Sessions
+              </CardTitle>
+              <ChevronRight className="size-3.5 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+            </button>
+            <CardDescription>Top cost, tokens and time — plus the latest runs</CardDescription>
           </div>
-          <button
-            type="button"
-            onClick={() => onNavigate("sessions")}
-            className="flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
-          >
-            view all <ChevronRight className="size-3.5" />
-          </button>
         </CardHeader>
         <CardContent>
-          {recent.loading ? (
-            <Skeleton className="h-28 w-full" />
-          ) : (
-            <div className="divide-y divide-border">
-              {recent.data?.sessions.map((s) => (
-                <button
-                  key={s.id}
-                  type="button"
-                  onClick={() => onSelectSession(s.id)}
-                  className="flex w-full items-center gap-3 py-2 text-left transition-colors hover:bg-secondary/50"
-                >
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-xs font-medium">{s.title || "(untitled)"}</div>
-                    <div className="mt-0.5 flex items-center gap-2 font-mono text-[10px] text-muted-foreground">
-                      <span className="truncate">{s.project}</span>
-                      <span>·</span>
-                      <span>{fmtRelative(s.timeCreated)}</span>
-                    </div>
-                  </div>
-                  <ModelBadge raw={s.model} />
-                  <span className="w-24 shrink-0 text-right font-mono text-[11px] tabular-nums">
+          <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
+            {topCost.loading ? (
+              <Skeleton className="h-32 w-full" />
+            ) : (
+              <SessionColumn
+                title="Top cost"
+                sessions={topCost.data?.sessions ?? []}
+                onSelect={onSelectSession}
+                renderValue={(s) => fmtCost(s.cost)}
+              />
+            )}
+            {topTokens.loading ? (
+              <Skeleton className="h-32 w-full" />
+            ) : (
+              <SessionColumn
+                title="Top tokens"
+                sessions={topTokens.data?.sessions ?? []}
+                onSelect={onSelectSession}
+                renderValue={(s) => fmtCompact(s.tokens.input + s.tokens.output + s.tokens.reasoning)}
+              />
+            )}
+            {topTime.loading ? (
+              <Skeleton className="h-32 w-full" />
+            ) : (
+              <SessionColumn
+                title="Top time"
+                sessions={topTime.data?.sessions ?? []}
+                onSelect={onSelectSession}
+                renderValue={(s) => fmtDuration(s.timeUpdated - s.timeCreated)}
+              />
+            )}
+            {recent.loading ? (
+              <Skeleton className="h-32 w-full" />
+            ) : (
+              <SessionColumn
+                title="Recent"
+                sessions={recent.data?.sessions ?? []}
+                onSelect={onSelectSession}
+                renderValue={(s) => (
+                  <span className="whitespace-nowrap">
                     {fmtCompact(s.tokens.input + s.tokens.output)} tok · {fmtCost(s.cost)}
                   </span>
-                </button>
-              ))}
-            </div>
-          )}
+                )}
+              />
+            )}
+          </div>
         </CardContent>
       </Card>
     </AppShell>
+  )
+}
+
+function SessionColumn({
+  title,
+  sessions,
+  onSelect,
+  renderValue,
+}: {
+  title: string
+  sessions: SessionSummary[]
+  onSelect: (id: string) => void
+  renderValue: (s: SessionSummary) => ReactNode
+}) {
+  return (
+    <div>
+      <div className="mb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+        {title}
+      </div>
+      <div className="divide-y divide-border">
+        {sessions.map((s) => (
+          <button
+            key={s.id}
+            type="button"
+            onClick={() => onSelect(s.id)}
+            className="flex w-full items-center gap-3 py-2 text-left transition-colors hover:bg-secondary/50"
+          >
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-xs font-medium">{s.title || "(untitled)"}</div>
+              <div className="mt-0.5 truncate font-mono text-[10px] text-muted-foreground">
+                {s.project}
+              </div>
+            </div>
+            <div className="shrink-0 text-right">
+              <div className="font-mono text-[10px] text-muted-foreground">
+                {fmtRelative(s.timeCreated)}
+              </div>
+              <div className="mt-0.5 font-mono text-[11px] tabular-nums">{renderValue(s)}</div>
+            </div>
+          </button>
+        ))}
+      </div>
+    </div>
   )
 }

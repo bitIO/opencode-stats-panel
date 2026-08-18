@@ -44,6 +44,7 @@ export interface SessionSummary {
   agent: string
   model: string
   timeCreated: number
+  timeUpdated: number
   tokens: Tokens
   cost: number
   messages: number

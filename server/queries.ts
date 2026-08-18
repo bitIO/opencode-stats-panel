@@ -5,7 +5,7 @@ type Row = Record<string, unknown>
 
 const SESSION_COLS = `s.id, s.title, s.directory, s.agent, s.model, s.tokens_input,
   s.tokens_output, s.tokens_reasoning, s.tokens_cache_read, s.tokens_cache_write,
-  s.cost, s.time_created`
+  s.cost, s.time_created, s.time_updated`
 
 const BUILTIN_TOOLS = new Set([
   "read", "write", "edit", "bash", "grep", "glob", "webfetch", "websearch",
@@ -371,6 +371,7 @@ export function getSessions(
   const orderBy =
     sort === "cost" ? `s.cost ${dir}`
     : sort === "tokens" ? `(s.tokens_input + s.tokens_output) ${dir}`
+    : sort === "duration" ? `(s.time_updated - s.time_created) ${dir}`
     : `s.time_created ${dir}`
   const sql = withToolStats(SESSION_COLS, SESSION_WHERE.where, orderBy, limit, offset)
   const rows = db.prepare(sql).all() as Row[]
@@ -385,6 +386,7 @@ export function getSessions(
       agent: String(r.agent ?? "default"),
       model: String(r.model ?? ""),
       timeCreated: Number(r.time_created),
+      timeUpdated: Number(r.time_updated ?? 0),
       tokens: {
         input: Number(r.tokens_input ?? 0),
         output: Number(r.tokens_output ?? 0),

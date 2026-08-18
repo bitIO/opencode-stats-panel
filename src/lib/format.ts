@@ -40,6 +40,16 @@ export function fmtEpoch(ms: number): string {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
 }
 
+export function fmtDuration(ms: number): string {
+  if (!Number.isFinite(ms) || ms <= 0) return "0s"
+  const s = Math.round(ms / 1000)
+  if (s < 60) return `${s}s`
+  const m = Math.floor(s / 60)
+  if (m < 60) return `${m}m`
+  const h = Math.floor(m / 60)
+  return `${h}h ${m % 60}m`
+}
+
 export function fmtRelative(ms: number): string {
   const diff = Date.now() - ms
   const min = Math.floor(diff / 60_000)
