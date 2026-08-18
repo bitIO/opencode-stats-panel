@@ -175,6 +175,12 @@ export interface Analysis {
   created_at: number
 }
 
+export interface ProjectOption {
+  directory: string
+  project: string
+  sessions: number
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, init)
   if (!res.ok) {
@@ -183,24 +189,33 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>
 }
 
+function withProject(path: string, project?: string | null): string {
+  if (!project) return path
+  const sep = path.includes("?") ? "&" : "?"
+  return `${path}${sep}project=${encodeURIComponent(project)}`
+}
+
 export const api = {
-  overview: () => request<Overview>("/api/overview"),
-  timeseries: (granularity: "day" | "week") =>
-    request<TimeseriesPoint[]>(`/api/timeseries?granularity=${granularity}`),
-  breakdown: (by: "model" | "agent" | "project") =>
-    request<BreakdownRow[]>(`/api/breakdown?by=${by}`),
-  waste: () => request<Waste>("/api/waste"),
-  composition: () => request<CompositionResponse>("/api/composition"),
-  compositionSessions: (limit = 12) =>
+  projects: () => request<ProjectOption[]>("/api/projects"),
+  overview: (project?: string | null) => request<Overview>(withProject("/api/overview", project)),
+  timeseries: (granularity: "day" | "week", project?: string | null) =>
+    request<TimeseriesPoint[]>(withProject(`/api/timeseries?granularity=${granularity}`, project)),
+  breakdown: (by: "model" | "agent" | "project", project?: string | null) =>
+    request<BreakdownRow[]>(withProject(`/api/breakdown?by=${by}`, project)),
+  waste: (project?: string | null) => request<Waste>(withProject("/api/waste", project)),
+  composition: (project?: string | null) =>
+    request<CompositionResponse>(withProject("/api/composition", project)),
+  compositionSessions: (limit = 12, project?: string | null) =>
     request<{ sessions: Array<{ id: string; title: string; project: string; agent: string; cost: number; categories: Composition; total: number }> }>(
-      `/api/composition/sessions?limit=${limit}`,
+      withProject(`/api/composition/sessions?limit=${limit}`, project),
     ),
-  sessions: (params: { limit?: number; offset?: number; sort?: string; dir?: string }) => {
+  sessions: (params: { limit?: number; offset?: number; sort?: string; dir?: string }, project?: string | null) => {
     const q = new URLSearchParams()
     if (params.limit) q.set("limit", String(params.limit))
     if (params.offset) q.set("offset", String(params.offset))
     if (params.sort) q.set("sort", params.sort)
     if (params.dir) q.set("dir", params.dir)
+    if (project) q.set("project", project)
     return request<SessionsResponse>(`/api/sessions?${q}`)
   },
   sessionDetail: (id: string) => request<SessionDetail>(`/api/sessions/${id}`),

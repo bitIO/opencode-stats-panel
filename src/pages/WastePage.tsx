@@ -8,6 +8,7 @@ import { SessionList } from "@/components/SessionList"
 import { useApi } from "@/hooks/use-api"
 import { api } from "@/lib/api"
 import { fmtCompact, fmtCost, fmtPct } from "@/lib/format"
+import { useProject } from "@/lib/project"
 
 const TOOL_COLOR: Record<string, string> = {
   read: "text-sky-400",
@@ -27,7 +28,8 @@ export function WastePage({
   onNavigate: Navigate
   onSelectSession: (id: string) => void
 }) {
-  const { data, loading } = useApi(api.waste, [])
+  const { project } = useProject()
+  const { data, loading } = useApi(() => api.waste(project), [project])
 
   return (
     <AppShell page="waste" onNavigate={onNavigate}>

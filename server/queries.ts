@@ -7,6 +7,11 @@ const SESSION_COLS = `s.id, s.title, s.directory, s.agent, s.model, s.tokens_inp
   s.tokens_output, s.tokens_reasoning, s.tokens_cache_read, s.tokens_cache_write,
   s.cost, s.time_created, s.time_updated`
 
+export function projectWhere(project?: string | null): { sql: string; params: string[] } {
+  if (!project) return { sql: "", params: [] }
+  return { sql: "directory = ?", params: [project] }
+}
+
 const BUILTIN_TOOLS = new Set([
   "read", "write", "edit", "bash", "grep", "glob", "webfetch", "websearch",
   "task", "agent", "skill", "list", "todowrite", "question", "migrate",
@@ -72,10 +77,13 @@ const PART_ROWS_SQL = `
     length(COALESCE(json_extract(p.data, '$.state.input'), '')) tin,
     length(COALESCE(json_extract(p.data, '$.state.output'), '')) tout,
     length(COALESCE(json_extract(p.data, '$.patch'), '')) patch
-  FROM part p JOIN message m ON m.id = p.message_id`
+  FROM part p JOIN message m ON m.id = p.message_id
+  JOIN session s ON s.id = m.session_id`
 
-function loadPartCounts(db: Database.Database): PartCount[] {
-  return (db.prepare(PART_ROWS_SQL).all() as Row[]).map((r) => ({
+function loadPartCounts(db: Database.Database, project?: string | null): PartCount[] {
+  const { sql, params } = projectWhere(project)
+  const where = sql ? ` WHERE ${sql}` : ""
+  return (db.prepare(`${PART_ROWS_SQL}${where}`).all(...params) as Row[]).map((r) => ({
     sessionId: String(r.sessionId),
     role: String(r.role ?? "assistant"),
     type: String(r.type ?? ""),
@@ -87,12 +95,15 @@ function loadPartCounts(db: Database.Database): PartCount[] {
   }))
 }
 
-export function getComposition(db: Database.Database) {
-  const parts = loadPartCounts(db)
+export function getComposition(db: Database.Database, project?: string | null) {
+  const parts = loadPartCounts(db, project)
+  const { sql, params } = projectWhere(project)
   const sessions = new Map(
     (db
-      .prepare(`SELECT id, agent, model, tokens_input FROM session`)
-      .all() as Row[]).map((r) => [
+      .prepare(
+        `SELECT id, agent, model, tokens_input FROM session${sql ? ` WHERE ${sql}` : ""}`,
+      )
+      .all(...params) as Row[]).map((r) => [
       String(r.id),
       {
         agent: String(r.agent ?? "default"),
@@ -177,12 +188,15 @@ export function getComposition(db: Database.Database) {
   }
 }
 
-export function getSessionCompositions(db: Database.Database, limit = 12) {
-  const parts = loadPartCounts(db)
+export function getSessionCompositions(db: Database.Database, limit = 12, project?: string | null) {
+  const parts = loadPartCounts(db, project)
+  const { sql, params } = projectWhere(project)
   const sessions = new Map(
     (db
-      .prepare(`SELECT id, title, directory, agent, tokens_input, cost FROM session`)
-      .all() as Row[]).map((r) => [
+      .prepare(
+        `SELECT id, title, directory, agent, tokens_input, cost FROM session${sql ? ` WHERE ${sql}` : ""}`,
+      )
+      .all(...params) as Row[]).map((r) => [
       String(r.id),
       {
         title: String(r.title ?? ""),
@@ -254,16 +268,17 @@ export function cacheRate(cacheRead: number, input: number): number {
   return total > 0 ? cacheRead / total : 0
 }
 
-export function getOverview(db: Database.Database) {
+export function getOverview(db: Database.Database, project?: string | null) {
+  const { sql, params } = projectWhere(project)
   const row = db
     .prepare(
       `SELECT COUNT(*) sessions, MIN(time_created) first_seen, MAX(time_created) last_seen,
         SUM(tokens_input) tokens_input, SUM(tokens_output) tokens_output,
         SUM(tokens_reasoning) tokens_reasoning, SUM(tokens_cache_read) tokens_cache_read,
         SUM(tokens_cache_write) tokens_cache_write, ROUND(SUM(cost), 4) cost
-       FROM session`,
+       FROM session${sql ? ` WHERE ${sql}` : ""}`,
     )
-    .get() as Row
+    .get(...params) as Row
   const tokensInput = Number(row.tokens_input ?? 0)
   const tokensOutput = Number(row.tokens_output ?? 0)
   const cacheRead = Number(row.tokens_cache_read ?? 0)
@@ -283,19 +298,20 @@ export function getOverview(db: Database.Database) {
   }
 }
 
-export function getTimeseries(db: Database.Database, granularity: "day" | "week") {
+export function getTimeseries(db: Database.Database, granularity: "day" | "week", project?: string | null) {
   const bucket =
     granularity === "week"
       ? `strftime('%Y-W%W', time_created/1000, 'unixepoch', 'localtime')`
       : `date(time_created/1000, 'unixepoch', 'localtime')`
+  const { sql, params } = projectWhere(project)
   const rows = db
     .prepare(
       `SELECT ${bucket} as bucket, COUNT(*) sessions, SUM(tokens_input) tokens_input,
         SUM(tokens_output) tokens_output, SUM(tokens_reasoning) tokens_reasoning,
         SUM(tokens_cache_read) tokens_cache_read, ROUND(SUM(cost), 4) cost
-       FROM session GROUP BY bucket ORDER BY bucket`,
+       FROM session${sql ? ` WHERE ${sql}` : ""} GROUP BY bucket ORDER BY bucket`,
     )
-    .all() as Row[]
+    .all(...params) as Row[]
   return rows.map((r) => ({
     bucket: String(r.bucket),
     sessions: Number(r.sessions),
@@ -312,21 +328,22 @@ function projectShortName(directory: string): string {
   return parts.slice(-2).join("/") || directory
 }
 
-export function getBreakdown(db: Database.Database, by: "model" | "agent" | "project") {
+export function getBreakdown(db: Database.Database, by: "model" | "agent" | "project", project?: string | null) {
   const group =
     by === "model"
       ? `json_extract(model, '$.id')`
       : by === "agent"
         ? `CASE WHEN agent IS NULL OR agent = '' THEN 'default' ELSE agent END`
         : `directory`
+  const { sql, params } = projectWhere(project)
   const rows = db
     .prepare(
       `SELECT ${group} as key, COUNT(*) sessions, SUM(tokens_input) tokens_input,
         SUM(tokens_output) tokens_output, SUM(tokens_reasoning) tokens_reasoning,
         SUM(tokens_cache_read) tokens_cache_read, ROUND(SUM(cost), 4) cost
-       FROM session GROUP BY key ORDER BY cost DESC`,
+       FROM session${sql ? ` WHERE ${sql}` : ""} GROUP BY key ORDER BY cost DESC`,
     )
-    .all() as Row[]
+    .all(...params) as Row[]
   return rows
     .filter((r) => r.key !== null && String(r.key) !== "")
     .map((r) => {
@@ -358,11 +375,23 @@ function withToolStats(select: string, where: string, orderBy: string, limit: nu
     LIMIT ${limit} OFFSET ${offset}`
 }
 
-const SESSION_WHERE = { where: "", orderBy: "s.time_created DESC" }
+export function getProjects(db: Database.Database) {
+  const rows = db
+    .prepare(`SELECT directory, COUNT(*) n FROM session GROUP BY directory ORDER BY n DESC`)
+    .all() as Row[]
+  return rows
+    .filter((r) => r.directory !== null && String(r.directory) !== "")
+    .map((r) => ({
+      directory: String(r.directory),
+      project: projectShortName(String(r.directory)),
+      sessions: Number(r.n),
+    }))
+}
 
 export function getSessions(
   db: Database.Database,
   opts: { limit?: number; offset?: number; sort?: string; dir?: string },
+  project?: string | null,
 ) {
   const limit = Math.min(Math.max(opts.limit ?? 100, 1), 500)
   const offset = Math.max(opts.offset ?? 0, 0)
@@ -373,9 +402,13 @@ export function getSessions(
     : sort === "tokens" ? `(s.tokens_input + s.tokens_output) ${dir}`
     : sort === "duration" ? `(s.time_updated - s.time_created) ${dir}`
     : `s.time_created ${dir}`
-  const sql = withToolStats(SESSION_COLS, SESSION_WHERE.where, orderBy, limit, offset)
-  const rows = db.prepare(sql).all() as Row[]
-  const total = (db.prepare(`SELECT COUNT(*) n FROM session`).get() as Row).n as number
+  const { sql, params } = projectWhere(project)
+  const where = sql ? `WHERE ${sql}` : ""
+  const sqlText = withToolStats(SESSION_COLS, where, orderBy, limit, offset)
+  const rows = db.prepare(sqlText).all(...params) as Row[]
+  const total = (
+    db.prepare(`SELECT COUNT(*) n FROM session${where ? ` ${where}` : ""}`).get(...params) as Row
+  ).n as number
   return {
     total,
     sessions: rows.map((r) => ({
@@ -538,12 +571,17 @@ export function getSessionDetail(db: Database.Database, id: string) {
   }
 }
 
-export function getWaste(db: Database.Database) {
-  const overview = getOverview(db)
+export function getWaste(db: Database.Database, project?: string | null) {
+  const overview = getOverview(db, project)
+  const { sql, params } = projectWhere(project)
+  const and = sql ? ` AND ${sql}` : ""
+  const where = sql ? ` WHERE ${sql}` : ""
 
   const zeroOutput = (db
-    .prepare(`SELECT COUNT(*) n FROM session WHERE tokens_output = 0 AND tokens_input > 10000`)
-    .get() as Row).n as number
+    .prepare(
+      `SELECT COUNT(*) n FROM session WHERE tokens_output = 0 AND tokens_input > 10000${and}`,
+    )
+    .get(...params) as Row).n as number
 
   const lowCacheHit = db
     .prepare(
@@ -551,18 +589,19 @@ export function getWaste(db: Database.Database) {
         (SELECT COUNT(*) FROM message m WHERE m.session_id = s.id) messages,
         (SELECT COUNT(*) FROM part p WHERE p.session_id = s.id AND json_extract(p.data, '$.type') = 'tool') tool_calls
        FROM session s
-       WHERE s.tokens_input > 100000 AND s.tokens_cache_read * 1.0 / (s.tokens_cache_read + s.tokens_input) < 0.5
+       WHERE s.tokens_input > 100000 AND s.tokens_cache_read * 1.0 / (s.tokens_cache_read + s.tokens_input) < 0.5${and}
        ORDER BY s.tokens_input DESC LIMIT 10`,
     )
-    .all() as Row[]
+    .all(...params) as Row[]
 
   const topToolOutput = db
     .prepare(
-      `SELECT json_extract(data, '$.tool') as tool, COUNT(*) calls, SUM(length(json_extract(data, '$.state.output'))) output_chars
-       FROM part WHERE json_extract(data, '$.type') = 'tool' AND json_extract(data, '$.state.output') IS NOT NULL
+      `SELECT json_extract(p.data, '$.tool') as tool, COUNT(*) calls, SUM(length(json_extract(p.data, '$.state.output'))) output_chars
+       FROM part p JOIN message m ON m.id = p.message_id JOIN session s ON s.id = m.session_id
+       WHERE json_extract(p.data, '$.type') = 'tool' AND json_extract(p.data, '$.state.output') IS NOT NULL${and}
        GROUP BY tool ORDER BY output_chars DESC LIMIT 10`,
     )
-    .all() as Row[]
+    .all(...params) as Row[]
 
   const fatSessions = db
     .prepare(
@@ -570,19 +609,19 @@ export function getWaste(db: Database.Database) {
         (SELECT COUNT(*) FROM message m WHERE m.session_id = s.id) messages,
         (SELECT COUNT(*) FROM part p WHERE p.session_id = s.id AND json_extract(p.data, '$.type') = 'tool') tool_calls
        FROM session s
-       WHERE s.tokens_input > 500000 AND (s.tokens_input + s.tokens_output) > 0
+       WHERE s.tokens_input > 500000 AND (s.tokens_input + s.tokens_output) > 0${and}
        ORDER BY (s.tokens_input * 1.0 / (s.tokens_input + s.tokens_output)) DESC LIMIT 10`,
     )
-    .all() as Row[]
+    .all(...params) as Row[]
 
   const expensiveSessions = db
     .prepare(
       `SELECT ${SESSION_COLS},
         (SELECT COUNT(*) FROM message m WHERE m.session_id = s.id) messages,
         (SELECT COUNT(*) FROM part p WHERE p.session_id = s.id AND json_extract(p.data, '$.type') = 'tool') tool_calls
-       FROM session s ORDER BY s.cost DESC LIMIT 10`,
+       FROM session s${where} ORDER BY s.cost DESC LIMIT 10`,
     )
-    .all() as Row[]
+    .all(...params) as Row[]
 
   const byAgent = db
     .prepare(
@@ -590,17 +629,18 @@ export function getWaste(db: Database.Database) {
         COUNT(*) sessions, SUM(tokens_input) tokens_input, SUM(tokens_output) tokens_output,
         SUM(tokens_reasoning) tokens_reasoning, SUM(tokens_cache_read) tokens_cache_read,
         SUM(tokens_cache_write) tokens_cache_write, ROUND(SUM(cost), 4) cost
-       FROM session GROUP BY agent ORDER BY cost DESC`,
+       FROM session${where} GROUP BY agent ORDER BY cost DESC`,
     )
-    .all() as Row[]
+    .all(...params) as Row[]
 
   const toolOutputChars = Number(
     (db
       .prepare(
-        `SELECT SUM(length(json_extract(data, '$.state.output'))) v FROM part
-         WHERE json_extract(data, '$.type') = 'tool' AND json_extract(data, '$.state.output') IS NOT NULL`,
+        `SELECT SUM(length(json_extract(p.data, '$.state.output'))) v FROM part p
+         JOIN message m ON m.id = p.message_id JOIN session s ON s.id = m.session_id
+         WHERE json_extract(p.data, '$.type') = 'tool' AND json_extract(p.data, '$.state.output') IS NOT NULL${and}`,
       )
-      .get() as Row).v ?? 0,
+      .get(...params) as Row).v ?? 0,
   )
 
   const mapSession = (r: Row) => {
@@ -660,14 +700,14 @@ export function getWaste(db: Database.Database) {
   }
 }
 
-export function getAnalyzeContext(db: Database.Database) {
-  const overview = getOverview(db)
-  const waste = getWaste(db)
-  const byModel = getBreakdown(db, "model")
-  const byAgent = getBreakdown(db, "agent")
-  const byProject = getBreakdown(db, "project")
-  const recent = getSessions(db, { limit: 15, sort: "time" })
-  const composition = getComposition(db)
+export function getAnalyzeContext(db: Database.Database, project?: string | null) {
+  const overview = getOverview(db, project)
+  const waste = getWaste(db, project)
+  const byModel = getBreakdown(db, "model", project)
+  const byAgent = getBreakdown(db, "agent", project)
+  const byProject = getBreakdown(db, "project", project)
+  const recent = getSessions(db, { limit: 15, sort: "time" }, project)
+  const composition = getComposition(db, project)
   return {
     overview,
     waste,

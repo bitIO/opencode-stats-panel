@@ -9,6 +9,7 @@ import { useApi } from "@/hooks/use-api"
 import { api, type SessionSummary } from "@/lib/api"
 import { fmtCompact, fmtCost, fmtRelative } from "@/lib/format"
 import { cn } from "@/lib/utils"
+import { useProject } from "@/lib/project"
 
 type SortKey = "time" | "cost" | "tokens"
 
@@ -24,10 +25,11 @@ export function SessionsPage({
   const [sort, setSort] = useState<SortKey>("time")
   const [dir, setDir] = useState<"asc" | "desc">("desc")
   const [offset, setOffset] = useState(0)
+  const { project } = useProject()
 
   const { data, loading } = useApi(
-    () => api.sessions({ limit: PAGE_SIZE, offset, sort, dir }),
-    [offset, sort, dir],
+    () => api.sessions({ limit: PAGE_SIZE, offset, sort, dir }, project),
+    [offset, sort, dir, project],
   )
 
   useEffect(() => setOffset(0), [sort, dir])

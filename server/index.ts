@@ -14,7 +14,13 @@ import {
   getAnalyzeContext,
   getComposition,
   getSessionCompositions,
+  getProjects,
 } from "./queries.js"
+
+function projectOf(req: { query: { project?: unknown } }): string | null {
+  const p = req.query.project
+  return typeof p === "string" && p !== "" ? p : null
+}
 
 const app = express()
 app.use(express.json())
@@ -38,31 +44,35 @@ app.get("/api/health", (_req, res) => {
   res.json({ ok: true, dbPath: config.dbPath })
 })
 
-app.get("/api/overview", (_req, res) => {
-  res.json(getOverview(db))
+app.get("/api/overview", (req, res) => {
+  res.json(getOverview(db, projectOf(req)))
 })
 
 app.get("/api/timeseries", (req, res) => {
   const granularity = req.query.granularity === "week" ? "week" : "day"
-  res.json(getTimeseries(db, granularity))
+  res.json(getTimeseries(db, granularity, projectOf(req)))
 })
 
 app.get("/api/breakdown", (req, res) => {
   const by = req.query.by === "agent" || req.query.by === "project" ? req.query.by : "model"
-  res.json(getBreakdown(db, by))
+  res.json(getBreakdown(db, by, projectOf(req)))
 })
 
-app.get("/api/waste", (_req, res) => {
-  res.json(getWaste(db))
+app.get("/api/waste", (req, res) => {
+  res.json(getWaste(db, projectOf(req)))
 })
 
-app.get("/api/composition", (_req, res) => {
-  res.json(getComposition(db))
+app.get("/api/composition", (req, res) => {
+  res.json(getComposition(db, projectOf(req)))
 })
 
 app.get("/api/composition/sessions", (req, res) => {
   const limit = req.query.limit ? Number(req.query.limit) : 12
-  res.json(getSessionCompositions(db, limit))
+  res.json(getSessionCompositions(db, limit, projectOf(req)))
+})
+
+app.get("/api/projects", (_req, res) => {
+  res.json(getProjects(db))
 })
 
 app.get("/api/sessions", (req, res) => {
@@ -70,7 +80,7 @@ app.get("/api/sessions", (req, res) => {
   const dir = typeof req.query.dir === "string" ? req.query.dir : "desc"
   const limit = req.query.limit ? Number(req.query.limit) : 100
   const offset = req.query.offset ? Number(req.query.offset) : 0
-  res.json(getSessions(db, { limit, offset, sort, dir }))
+  res.json(getSessions(db, { limit, offset, sort, dir }, projectOf(req)))
 })
 
 app.get("/api/sessions/:id", (req, res) => {
@@ -114,7 +124,9 @@ app.delete("/api/analysis/:id", (req, res) => {
 })
 
 app.post("/api/analyze", async (req, res) => {
-  const context = getAnalyzeContext(db)
+  const project =
+    typeof req.body?.project === "string" && req.body.project !== "" ? req.body.project : null
+  const context = getAnalyzeContext(db, project)
   const focus = typeof req.body?.focus === "string" ? req.body.focus : undefined
   await streamAnalyze(res, context, focus, analysisDb)
 })

@@ -23,6 +23,7 @@ import { BreakdownBars } from "@/components/BreakdownBars"
 import { useApi } from "@/hooks/use-api"
 import { api, type SessionSummary } from "@/lib/api"
 import { fmtCompact, fmtCost, fmtDuration, fmtPct, fmtRelative } from "@/lib/format"
+import { useProject } from "@/lib/project"
 
 const chartConfig = {
   input: { label: "input", color: "var(--chart-1)" },
@@ -37,15 +38,16 @@ export function OverviewPage({
   onSelectSession: (id: string) => void
 }) {
   const [granularity, setGranularity] = useState<"day" | "week">("week")
-  const overview = useApi(api.overview, [])
-  const series = useApi(() => api.timeseries(granularity), [granularity])
-  const byModel = useApi(() => api.breakdown("model"), [])
-  const byAgent = useApi(() => api.breakdown("agent"), [])
-  const byProject = useApi(() => api.breakdown("project"), [])
-  const topCost = useApi(() => api.sessions({ limit: 3, sort: "cost" }), [])
-  const topTokens = useApi(() => api.sessions({ limit: 3, sort: "tokens" }), [])
-  const topTime = useApi(() => api.sessions({ limit: 3, sort: "duration" }), [])
-  const recent = useApi(() => api.sessions({ limit: 3, sort: "time" }), [])
+  const { project } = useProject()
+  const overview = useApi(() => api.overview(project), [project])
+  const series = useApi(() => api.timeseries(granularity, project), [granularity, project])
+  const byModel = useApi(() => api.breakdown("model", project), [project])
+  const byAgent = useApi(() => api.breakdown("agent", project), [project])
+  const byProject = useApi(() => api.breakdown("project", project), [project])
+  const topCost = useApi(() => api.sessions({ limit: 3, sort: "cost" }, project), [project])
+  const topTokens = useApi(() => api.sessions({ limit: 3, sort: "tokens" }, project), [project])
+  const topTime = useApi(() => api.sessions({ limit: 3, sort: "duration" }, project), [project])
+  const recent = useApi(() => api.sessions({ limit: 3, sort: "time" }, project), [project])
 
   const o = overview.data
 

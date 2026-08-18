@@ -10,6 +10,7 @@ import { useApi } from "@/hooks/use-api"
 import { api, COMPOSITION_CATEGORIES, type CompositionRow } from "@/lib/api"
 import { fmtCompact, fmtCost } from "@/lib/format"
 import { cn } from "@/lib/utils"
+import { useProject } from "@/lib/project"
 
 type Scope = "all" | "model" | "agent"
 
@@ -21,8 +22,9 @@ export function CompositionPage({
   onSelectSession: (id: string) => void
 }) {
   const [scope, setScope] = useState<Scope>("all")
-  const { data, loading } = useApi(api.composition, [])
-  const sessions = useApi(() => api.compositionSessions(14), [])
+  const { project } = useProject()
+  const { data, loading } = useApi(() => api.composition(project), [project])
+  const sessions = useApi(() => api.compositionSessions(14, project), [project])
 
   const rows: CompositionRow[] =
     scope === "all" ? (data ? [data.all] : []) : scope === "model" ? data?.byModel ?? [] : data?.byAgent ?? []

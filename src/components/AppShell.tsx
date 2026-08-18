@@ -1,6 +1,8 @@
 import type { ReactNode } from "react"
 import { Activity, Boxes, Flame, List, Sparkles } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { Separator } from "@/components/ui/separator"
+import { ProjectSelect } from "@/components/ProjectSelect"
 
 export type PageKey = "overview" | "composition" | "waste" | "sessions" | "analyze"
 export type Navigate = (page: PageKey) => void
@@ -32,6 +34,12 @@ export function AppShell({ page, onNavigate, children, dbStatus }: AppShellProps
             <div className="text-sm font-semibold leading-tight">opencode</div>
             <div className="font-mono text-[11px] text-muted-foreground">stats panel</div>
           </div>
+        </div>
+
+        <div className="px-3 pb-4">
+          <Separator className="mb-4" />
+          <ProjectSelect />
+          <Separator className="mt-4" />
         </div>
 
         <nav className="flex-1 space-y-1 px-3">

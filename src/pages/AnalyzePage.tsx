@@ -11,6 +11,7 @@ import { useApi } from "@/hooks/use-api"
 import { api, type AnalysisSummary } from "@/lib/api"
 import { fmtCompact, fmtRelative } from "@/lib/format"
 import { cn } from "@/lib/utils"
+import { useProject } from "@/lib/project"
 
 interface SseEvent {
   text?: string
@@ -90,6 +91,7 @@ export function AnalyzePage({
   const [text, setText] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [example, setExample] = useState<string | undefined>(undefined)
+  const { project } = useProject()
   const aborterRef = useRef<AbortController | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const mountedRef = useRef(false)
@@ -139,7 +141,7 @@ export function AnalyzePage({
       const res = await fetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ focus: focus.trim() || undefined }),
+        body: JSON.stringify({ focus: focus.trim() || undefined, project }),
         signal: abort.signal,
       })
       if (!res.ok || !res.body) throw new Error(`${res.status} ${res.statusText}`)
