@@ -87,6 +87,19 @@ npm run dev
 - `OPENCODE_DB=/path/to/opencode.db npm run dev` — point at a different DB (default `~/.local/share/opencode/opencode.db`).
 - `OPENCODE_STATS_MODEL=opencode/claude-sonnet-4-6 npm run dev` — different analysis model.
 
+## Install as a command: `oc-stats`
+
+Install a `oc-stats` launcher into `~/.local/bin` so you can open the panel from anywhere (works on macOS and Linux):
+
+```bash
+./install.sh
+```
+
+`install.sh` builds the frontend and writes a `oc-stats` script that starts the **backend server** (which also serves the built UI) at `http://localhost:8787`. Stop it with `Ctrl-C`.
+
+- `OC_STATS_BIN=/other/bin ./install.sh` — install into a different directory instead of `~/.local/bin` (make sure it's on your `PATH`).
+- Requires `npm install` to have been run already.
+
 ## How it reads the DB
 
 The backend opens the live opencode.db **read-only** (`query_only` pragma). SQLite's WAL mode allows concurrent readers, so opencode can keep writing while the dashboard reads. Every query is a fresh read, so numbers always reflect the latest sessions — hit refresh for new data.

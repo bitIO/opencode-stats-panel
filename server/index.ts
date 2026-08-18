@@ -1,3 +1,5 @@
+import fs from "node:fs"
+import path from "node:path"
 import express from "express"
 import { openDb, openAnalysisDb, listAnalyses, getAnalysis, deleteAnalysis } from "./db.js"
 import { config } from "./config.js"
@@ -16,6 +18,18 @@ import {
 
 const app = express()
 app.use(express.json())
+
+const distDir = path.join(import.meta.dirname, "..", "dist")
+if (fs.existsSync(distDir)) {
+  app.use(express.static(distDir))
+  app.use((req, res, next) => {
+    if (req.method === "GET" && !req.path.startsWith("/api/")) {
+      res.sendFile(path.join(distDir, "index.html"))
+    } else {
+      next()
+    }
+  })
+}
 
 let db = openDb()
 const analysisDb = openAnalysisDb()
