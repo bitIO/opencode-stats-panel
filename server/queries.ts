@@ -1,4 +1,5 @@
 import path from "node:path"
+import os from "node:os"
 import type Database from "better-sqlite3"
 
 type Row = Record<string, unknown>
@@ -715,10 +716,17 @@ export interface SkillsFilters {
   granularity?: "day" | "week"
 }
 
+const GLOBAL_SKILL_DIRS = [
+  path.join(os.homedir(), ".agents/skills"),
+  path.join(os.homedir(), ".config/opencode/skills"),
+]
+
 function skillOrigin(dir: string | null): "built-in" | "project" | "global" | "unknown" {
   if (dir === null) return "unknown"
   if (dir === ".") return "built-in"
-  if (dir.includes(".agents/skills") || dir.includes(".config/opencode/skills")) return "global"
+  if (GLOBAL_SKILL_DIRS.some((base) => dir === base || dir.startsWith(base + path.sep))) {
+    return "global"
+  }
   return "project"
 }
 
@@ -747,7 +755,7 @@ export function getSkills(db: Database.Database, opts: SkillsFilters = {}) {
     params.push(since)
   }
   if (agent) {
-    conds.push("s.agent = ?")
+    conds.push("COALESCE(s.agent, 'default') = ?")
     params.push(agent)
   }
 
