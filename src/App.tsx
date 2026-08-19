@@ -3,6 +3,7 @@ import { OverviewPage } from "@/pages/OverviewPage"
 import { CompositionPage } from "@/pages/CompositionPage"
 import { WastePage } from "@/pages/WastePage"
 import { SessionsPage } from "@/pages/SessionsPage"
+import { SkillsPage } from "@/pages/SkillsPage"
 import { AnalyzePage } from "@/pages/AnalyzePage"
 import { SessionDrawer } from "@/components/SessionDrawer"
 import { ProjectProvider } from "@/lib/project"
@@ -31,6 +32,7 @@ function Panel() {
       {page === "composition" && <CompositionPage {...common} />}
       {page === "waste" && <WastePage {...common} />}
       {page === "sessions" && <SessionsPage {...common} />}
+      {page === "skills" && <SkillsPage {...common} />}
       {page === "analyze" && <AnalyzePage onNavigate={setPage} />}
       <SessionDrawer sessionId={sessionId} onClose={() => setSessionId(null)} />
     </>

@@ -132,7 +132,7 @@ export function SessionDrawer({ sessionId, onClose }: SessionDrawerProps) {
                               )}
                             >
                               <Icon className="size-3" />
-                              {p.tool ?? spec.label}
+                              {p.tool === "skill" && p.skillName ? `skill: ${p.skillName}` : p.tool ?? spec.label}
                               {p.type === "tool" && p.outputChars > 1000 && (
                                 <span className="text-amber-500">·{fmtCompact(p.outputChars)}c</span>
                               )}

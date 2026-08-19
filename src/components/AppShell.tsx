@@ -1,10 +1,10 @@
 import type { ReactNode } from "react"
-import { Activity, Boxes, Flame, List, Sparkles } from "lucide-react"
+import { Activity, Boxes, Flame, List, Sparkles, Zap } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Separator } from "@/components/ui/separator"
 import { ProjectSelect } from "@/components/ProjectSelect"
 
-export type PageKey = "overview" | "composition" | "waste" | "sessions" | "analyze"
+export type PageKey = "overview" | "composition" | "waste" | "sessions" | "skills" | "analyze"
 export type Navigate = (page: PageKey) => void
 
 const NAV: Array<{ key: PageKey; label: string; icon: typeof Activity; blurb: string }> = [
@@ -12,6 +12,7 @@ const NAV: Array<{ key: PageKey; label: string; icon: typeof Activity; blurb: st
   { key: "composition", label: "Composition", icon: Boxes, blurb: "What the context is made of" },
   { key: "waste", label: "Waste & Insights", icon: Flame, blurb: "Where tokens burn" },
   { key: "sessions", label: "Sessions", icon: List, blurb: "Drill into every run" },
+  { key: "skills", label: "Skills", icon: Zap, blurb: "Skill usage and effectiveness" },
   { key: "analyze", label: "AI Analysis", icon: Sparkles, blurb: "big-pickle reads the data" },
 ]
 
