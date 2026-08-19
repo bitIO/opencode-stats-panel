@@ -436,6 +436,14 @@ export function getSessions(
   }
 }
 
+function partSkillName(data: Record<string, unknown>, tool: string | undefined): string | null {
+  if (tool !== "skill") return null
+  const input = (data.state as Record<string, unknown> | undefined)?.input as
+    | Record<string, unknown>
+    | undefined
+  return typeof input?.name === "string" ? input.name : null
+}
+
 export function getSessionDetail(db: Database.Database, id: string) {
   const session = db
     .prepare(
@@ -457,7 +465,7 @@ export function getSessionDetail(db: Database.Database, id: string) {
 
   const partsByMessage = new Map<
     string,
-    Array<{ type: string; tool?: string; state?: string; outputChars: number }>
+    Array<{ type: string; tool?: string; state?: string; outputChars: number; skillName: string | null }>
   >()
   const msgChars = new Map<string, Record<Exclude<CompositionCategory, "scaffold">, number>>()
   const roleById = new Map<string, string>()
@@ -486,7 +494,7 @@ export function getSessionDetail(db: Database.Database, id: string) {
       typeof (d.state as Record<string, unknown> | undefined)?.output === "string"
         ? ((d.state as Record<string, unknown>).output as string).length
         : 0
-    const entry = { type, tool, state, outputChars }
+    const entry = { type, tool, state, outputChars, skillName: partSkillName(d, tool) }
     const arr = partsByMessage.get(mid)
     if (arr) arr.push(entry)
     else partsByMessage.set(mid, [entry])
@@ -697,6 +705,230 @@ export function getWaste(db: Database.Database, project?: string | null) {
         avgTokensPerSession: Math.round((input + output) / Math.max(Number(r.sessions), 1)),
       }
     }),
+  }
+}
+
+export interface SkillsFilters {
+  project?: string | null
+  since?: number | null
+  agent?: string | null
+  granularity?: "day" | "week"
+}
+
+function skillOrigin(dir: string | null): "built-in" | "project" | "global" | "unknown" {
+  if (dir === null) return "unknown"
+  if (dir === ".") return "built-in"
+  if (dir.includes(".agents/skills") || dir.includes(".config/opencode/skills")) return "global"
+  return "project"
+}
+
+function round4(n: number): number {
+  return Math.round(n * 10000) / 10000
+}
+
+export function getSkills(db: Database.Database, opts: SkillsFilters = {}) {
+  const { project, since, agent, granularity = "day" } = opts
+  const bucket =
+    granularity === "week"
+      ? `strftime('%Y-W%W', p.time_created/1000, 'unixepoch', 'localtime')`
+      : `date(p.time_created/1000, 'unixepoch', 'localtime')`
+
+  const conds = [
+    `json_extract(p.data, '$.type') = 'tool'`,
+    `json_extract(p.data, '$.tool') = 'skill'`,
+  ]
+  const params: unknown[] = []
+  if (project) {
+    conds.push("s.directory = ?")
+    params.push(project)
+  }
+  if (since != null) {
+    conds.push("s.time_created >= ?")
+    params.push(since)
+  }
+  if (agent) {
+    conds.push("s.agent = ?")
+    params.push(agent)
+  }
+
+  const rows = db
+    .prepare(
+      `SELECT p.session_id sessionId,
+        json_extract(p.data, '$.state.input.name') skillName,
+        json_extract(p.data, '$.state.status') status,
+        json_extract(p.data, '$.state.metadata.dir') originDir,
+        COALESCE(json_extract(p.data, '$.state.time.end'), p.time_created) lastUsed,
+        s.title title,
+        s.directory project,
+        s.agent agent,
+        s.cost cost,
+        s.tokens_output tokensOutput,
+        s.tokens_input tokensInput,
+        s.time_created sessionCreated,
+        ${bucket} bucket
+       FROM part p
+       JOIN message m ON m.id = p.message_id
+       JOIN session s ON s.id = m.session_id
+       WHERE ${conds.join(" AND ")}
+       ORDER BY p.time_created, p.id`,
+    )
+    .all(...params) as Row[]
+
+  interface SkillAcc {
+    invocations: number
+    errors: number
+    sessions: Set<string>
+    deadSessions: Set<string>
+    sessionCosts: Map<string, number>
+    lastUsed: number
+    originDir: string | null
+  }
+  const skills = new Map<string, SkillAcc>()
+  const buckets = new Map<string, { invocations: number; errors: number }>()
+  const byProject = new Map<string, { invocations: number; skills: Set<string> }>()
+  const byAgent = new Map<string, { invocations: number; skills: Set<string> }>()
+  const sessionRows = new Map<
+    string,
+    { title: string; directory: string; agent: string; sessionCreated: number; names: string[]; seen: Set<string> }
+  >()
+  const sessionCosts = new Map<string, number>()
+
+  const skillAcc = (name: string): SkillAcc => {
+    if (!skills.has(name)) {
+      skills.set(name, {
+        invocations: 0,
+        errors: 0,
+        sessions: new Set(),
+        deadSessions: new Set(),
+        sessionCosts: new Map(),
+        lastUsed: 0,
+        originDir: null,
+      })
+    }
+    return skills.get(name)!
+  }
+  const bucketAcc = (key: string) => {
+    if (!buckets.has(key)) buckets.set(key, { invocations: 0, errors: 0 })
+    return buckets.get(key)!
+  }
+  const groupAcc = (map: Map<string, { invocations: number; skills: Set<string> }>, key: string) => {
+    if (!map.has(key)) map.set(key, { invocations: 0, skills: new Set() })
+    return map.get(key)!
+  }
+  const sessionAcc = (id: string) => {
+    if (!sessionRows.has(id)) {
+      sessionRows.set(id, {
+        title: "",
+        directory: "",
+        agent: "",
+        sessionCreated: 0,
+        names: [],
+        seen: new Set(),
+      })
+    }
+    return sessionRows.get(id)!
+  }
+
+  for (const r of rows) {
+    const name = String(r.skillName ?? "unknown")
+    const sessionId = String(r.sessionId)
+    const isError = String(r.status ?? "") === "error"
+    const cost = Number(r.cost ?? 0)
+    const lastUsed = Number(r.lastUsed ?? r.sessionCreated ?? 0)
+    const sessionCreated = Number(r.sessionCreated ?? 0)
+    const dir = String(r.project ?? "")
+    const sessAgent = String(r.agent ?? "default")
+    const isDead = Number(r.tokensOutput ?? 0) === 0 && Number(r.tokensInput ?? 0) > 10000
+
+    const acc = skillAcc(name)
+    acc.invocations += 1
+    if (isError) acc.errors += 1
+    acc.sessions.add(sessionId)
+    if (isDead) acc.deadSessions.add(sessionId)
+    if (!acc.sessionCosts.has(sessionId)) acc.sessionCosts.set(sessionId, cost)
+    if (lastUsed > acc.lastUsed) {
+      acc.lastUsed = lastUsed
+      acc.originDir = r.originDir === null || r.originDir === undefined ? null : String(r.originDir)
+    }
+
+    if (!sessionCosts.has(sessionId)) sessionCosts.set(sessionId, cost)
+
+    const b = bucketAcc(String(r.bucket ?? ""))
+    b.invocations += 1
+    if (isError) b.errors += 1
+
+    if (dir !== "") {
+      const p = groupAcc(byProject, dir)
+      p.invocations += 1
+      p.skills.add(name)
+    }
+    const g = groupAcc(byAgent, sessAgent)
+    g.invocations += 1
+    g.skills.add(name)
+
+    const s = sessionAcc(sessionId)
+    s.title = String(r.title ?? "")
+    s.directory = dir
+    s.agent = sessAgent
+    s.sessionCreated = sessionCreated
+    if (!s.seen.has(name)) {
+      s.seen.add(name)
+      s.names.push(name)
+    }
+  }
+
+  const totalSessions = sessionCosts.size
+  const totalCost = round4(Array.from(sessionCosts.values()).reduce((a, b) => a + b, 0))
+
+  return {
+    totals: {
+      invocations: rows.length,
+      skills: skills.size,
+      sessions: totalSessions,
+      cost: totalCost,
+      errorInvocations: Array.from(skills.values()).reduce((a, s) => a + s.errors, 0),
+    },
+    skills: Array.from(skills.entries())
+      .map(([name, s]) => {
+        const sessions = s.sessions.size
+        const deadSessions = s.deadSessions.size
+        const cost = round4(Array.from(s.sessionCosts.values()).reduce((a, b) => a + b, 0))
+        return {
+          name,
+          origin: skillOrigin(s.originDir),
+          invocations: s.invocations,
+          errors: s.errors,
+          errorRate: s.invocations > 0 ? round4(s.errors / s.invocations) : 0,
+          sessions,
+          deadSessions,
+          deadSessionRate: sessions > 0 ? round4(deadSessions / sessions) : 0,
+          reuse: totalSessions > 0 ? round4(sessions / totalSessions) : 0,
+          cost,
+          costPerSession: sessions > 0 ? round4(cost / sessions) : 0,
+          lastUsed: s.lastUsed,
+        }
+      })
+      .sort((a, b) => b.invocations - a.invocations || a.name.localeCompare(b.name)),
+    timeseries: Array.from(buckets.entries())
+      .map(([bucketKey, b]) => ({ bucket: bucketKey, invocations: b.invocations, errors: b.errors }))
+      .sort((a, b) => a.bucket.localeCompare(b.bucket)),
+    byProject: Array.from(byProject.entries())
+      .map(([projectName, g]) => ({ project: projectName, invocations: g.invocations, skills: g.skills.size }))
+      .sort((a, b) => b.invocations - a.invocations || a.project.localeCompare(b.project)),
+    byAgent: Array.from(byAgent.entries())
+      .map(([agentName, g]) => ({ agent: agentName, invocations: g.invocations, skills: g.skills.size }))
+      .sort((a, b) => b.invocations - a.invocations || a.agent.localeCompare(b.agent)),
+    sessions: Array.from(sessionRows.entries())
+      .sort((a, b) => b[1].sessionCreated - a[1].sessionCreated)
+      .slice(0, 200)
+      .map(([id, s]) => ({
+        id,
+        title: s.title,
+        directory: s.directory,
+        agent: s.agent,
+        timeCreated: s.sessionCreated,
+        skills: s.names,
+      })),
   }
 }
 

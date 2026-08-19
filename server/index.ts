@@ -15,6 +15,7 @@ import {
   getComposition,
   getSessionCompositions,
   getProjects,
+  getSkills,
 } from "./queries.js"
 
 function projectOf(req: { query: { project?: unknown } }): string | null {
@@ -73,6 +74,21 @@ app.get("/api/composition/sessions", (req, res) => {
 
 app.get("/api/projects", (_req, res) => {
   res.json(getProjects(db))
+})
+
+app.get("/api/skills", (req, res) => {
+  const sinceRaw = req.query.since
+  const since = typeof sinceRaw === "string" && sinceRaw !== "" ? Number(sinceRaw) : undefined
+  const agent = typeof req.query.agent === "string" && req.query.agent !== "" ? req.query.agent : undefined
+  const granularity = req.query.granularity === "week" ? "week" : "day"
+  res.json(
+    getSkills(db, {
+      project: projectOf(req),
+      since: since !== undefined && Number.isFinite(since) ? since : undefined,
+      agent,
+      granularity,
+    }),
+  )
 })
 
 app.get("/api/sessions", (req, res) => {
