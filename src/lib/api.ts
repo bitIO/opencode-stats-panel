@@ -101,6 +101,7 @@ export interface Waste {
 export interface SessionPart {
   type: string
   tool?: string
+  skillName?: string | null
   state?: string
   outputChars: number
 }
@@ -181,6 +182,48 @@ export interface ProjectOption {
   sessions: number
 }
 
+export interface SkillsParams {
+  project?: string | null
+  since?: number | null
+  agent?: string | null
+  granularity?: "day" | "week"
+}
+
+export interface SkillsResponse {
+  totals: {
+    invocations: number
+    skills: number
+    sessions: number
+    cost: number
+    errorInvocations: number
+  }
+  skills: Array<{
+    name: string
+    origin: "built-in" | "project" | "global" | "unknown"
+    invocations: number
+    errors: number
+    errorRate: number
+    sessions: number
+    deadSessions: number
+    deadSessionRate: number
+    reuse: number
+    cost: number
+    costPerSession: number
+    lastUsed: number
+  }>
+  timeseries: Array<{ bucket: string; invocations: number; errors: number }>
+  byProject: Array<{ project: string; invocations: number; skills: number }>
+  byAgent: Array<{ agent: string; invocations: number; skills: number }>
+  sessions: Array<{
+    id: string
+    title: string
+    directory: string
+    agent: string
+    timeCreated: number
+    skills: string[]
+  }>
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, init)
   if (!res.ok) {
@@ -219,6 +262,14 @@ export const api = {
     return request<SessionsResponse>(`/api/sessions?${q}`)
   },
   sessionDetail: (id: string) => request<SessionDetail>(`/api/sessions/${id}`),
+  skills: (params: SkillsParams) => {
+    const q = new URLSearchParams()
+    if (params.project) q.set("project", params.project)
+    if (params.since) q.set("since", String(params.since))
+    if (params.agent) q.set("agent", params.agent)
+    if (params.granularity) q.set("granularity", params.granularity)
+    return request<SkillsResponse>(`/api/skills?${q}`)
+  },
   analysisList: () => request<AnalysisSummary[]>("/api/analysis"),
   analysisDetail: (id: number) => request<Analysis>(`/api/analysis/${id}`),
   analysisDelete: (id: number) =>
